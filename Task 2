@@ -1,0 +1,43 @@
+import math
+
+# Task Description + Input Field
+EAR = 0.058
+APR = 0.058
+
+# Create a table I can later refer to for easier calculation
+periods = [
+    ("1 year",    1.0000),
+    ("6 months",  0.5000),
+    ("1 quarter", 0.2500),
+    ("1 month",   1/12),
+    ("1 week",    1/52),
+    ("1 day",     1/365),
+]
+
+# Headers from 5.1
+print("Period | T | r_f(T) | APR (EAR fixed) | r_f(T) | EAR (APR fixed)")
+print("________________________________________________________________")
+
+for name, T in periods:
+
+    rf_from_EAR = (1 + EAR) ** T - 1
+    APR_from_EAR = rf_from_EAR / T
+
+    rf_from_APR = APR * T
+    EAR_from_APR = (1 + rf_from_APR) ** (1 / T) - 1
+
+    print(
+        name, "|",
+        round(T, 4), "|",
+        round(rf_from_EAR, 4), "|",
+        round(APR_from_EAR, 5), "|",
+        round(rf_from_APR, 4), "|",
+        round(EAR_from_APR, 5)
+    )
+
+# Continuous compounding
+r_cc = math.log(1 + EAR)        # r_cc = ln(1 + EAR)
+EAR_cont = math.exp(APR) - 1    # EAR = e^(APR) - 1
+
+print("Continuous | - | - |", round(r_cc, 5), "| - |", round(EAR_cont, 5))
+
