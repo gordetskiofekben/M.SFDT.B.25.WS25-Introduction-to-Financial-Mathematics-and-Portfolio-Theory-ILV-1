@@ -1,0 +1,139 @@
+# importing necessary libraries
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+
+
+# importing csv file
+data_csv = "dataset_multistock_final.csv"
+
+# setting an amount of money we invest
+principal = 1000
+
+# setting the timeframe
+start_date = "2015-01-29"
+end_date   = "2025-12-31"
+
+# formatting of percentage values and currency values
+def pct_fmt(x: float) -> str:
+    return f"{x*100:.2f}%"
+
+def price(x, pos):
+    return f"${x:,.0f}"
+
+# data preparation
+df = pd.read_csv(data_csv)
+required_cols = {"Date", "Ticker", "Close"}
+
+df["Date"] = pd.to_datetime(df["Date"])
+df = df.sort_values(["Ticker", "Date"])
+
+# defining mechanisms that the script works even if your data starts later
+data_min = df["Date"].min()
+data_max = df["Date"].max()
+
+start = max(pd.to_datetime(start_date), data_min)
+end   = min(pd.to_datetime(end_date), data_max)
+
+dfw = df[(df["Date"] >= start) & (df["Date"] <= end)].copy()
+
+# calculation of  APR, EAR, and RCC per ticker
+# APR = (End/Start)^(1/years) - 1, where years is inferred from number of
+# monthly observations
+# EAR = (1 + APR/12)^12 - 1
+# RCC = ln(1 + EAR)
+rows = []
+for ticker, g in dfw.groupby("Ticker", sort=True):
+    g = g.sort_values("Date")
+
+    p0 = float(g["Close"].iloc[0])
+    p1 = float(g["Close"].iloc[-1])
+
+    n_obs = len(g)
+    if n_obs < 2:
+        continue
+    n_years = (n_obs - 1) / 12.0
+    if n_years <= 0:
+        continue
+
+    apr = (p1 / p0) ** (1.0 / n_years) - 1.0
+    ear = (1.0 + apr / 12.0) ** 12 - 1.0
+    rcc = np.log(1.0 + ear)
+
+# appending our values the the list rows
+    rows.append({"Stock": ticker, "APR": apr, "EAR": ear, "RCC": rcc})
+
+rate_table = pd.DataFrame(rows).sort_values("Stock").reset_index(drop=True)
+
+# formatting of the table
+rate_table_fmt = rate_table.copy()
+for c in ["APR", "EAR", "RCC"]:
+    rate_table_fmt[c] = rate_table_fmt[c].map(pct_fmt)
+
+# output of our rate table
+print(rate_table_fmt.to_string(index=False))
+
+# creating of our graphs
+years = np.arange(0.0, 10.0 + 1e-9, 1.0 / 12.0)
+
+growth_rows = []
+for _, r in rate_table.iterrows():
+    for rate_type in ["APR", "EAR", "RCC"]:
+        rate = float(r[rate_type])
+        values = principal * np.exp(rate * years)
+        growth_rows.append(
+            pd.DataFrame(
+                {
+                    "Stock": r["Stock"],
+                    "Rate_Type": rate_type,
+                    "Years": years,
+                    "Value": values,
+                }
+            )
+        )
+
+growth = pd.concat(growth_rows, ignore_index=True)
+
+stocks = rate_table["Stock"].tolist()
+n = len(stocks)
+
+# customization of the graphs
+ncols = 3 if n >= 3 else n
+nrows = int(np.ceil(n / ncols))
+
+fig_w = 10
+fig_h = 3.2 * nrows
+fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), sharex=True, sharey=False)
+axes = np.array(axes).reshape(-1)
+
+line_handles = {}
+for i, stock in enumerate(stocks):
+    ax = axes[i]
+    gs = growth[growth["Stock"] == stock]
+
+    for rate_type in ["APR", "EAR", "RCC"]:
+        sub = gs[gs["Rate_Type"] == rate_type]
+        (ln,) = ax.plot(sub["Years"], sub["Value"], linewidth=2, label=rate_type)
+        line_handles.setdefault(rate_type, ln)
+
+    ax.set_title(stock)
+    ax.grid(True, alpha=0.25)
+
+# graph labels and formatting
+for ax in axes[: len(stocks)]:
+    ax.yaxis.set_major_formatter(FuncFormatter(price))
+
+fig.suptitle("Investment End Value", y=0.98)
+fig.text(0.5, 0.01, "Years", ha="center")
+fig.text(0.01, 0.5, "Investment Value", va="center", rotation="vertical")
+
+# creating a legend
+handles = [line_handles[k] for k in ["APR", "EAR", "RCC"] if k in line_handles]
+labels = [h.get_label() for h in handles]
+fig.legend(handles, labels, title="Rate Type", loc="center right", bbox_to_anchor=(1.02, 0.5))
+
+plt.tight_layout(rect=[0.03, 0.03, 0.90, 0.94])
+
+# output of the plot
+plt.show()
